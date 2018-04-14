@@ -30,8 +30,6 @@ make install
 ### Todos
 
  - Clean everything up
- - Make colours better
- - Scale down large images
  - etc.
 
 ### Dependencies

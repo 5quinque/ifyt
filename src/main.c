@@ -11,6 +11,7 @@
 
 int prechecks(char *file_name, FILE **fp);
 int check_if_png(char *file_name, FILE **fp);
+void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height);
 
 int main(int argc, char **argv) {
   char *image_path = NULL;
@@ -22,7 +23,6 @@ int main(int argc, char **argv) {
   png_infop end_info;
   png_uint_32 width;
   png_uint_32 height;
-  struct winsize w;
   /*int bit_depth;*/
 
   while ((c = getopt(argc, argv, "i:v")) != -1) {
@@ -105,19 +105,48 @@ int main(int argc, char **argv) {
 
   png_read_image(png_ptr, row_pointers);
 
+  print_image(row_pointers, width, height);
+
+
+  /* clean up */
+  png_read_end(png_ptr, end_info);
+  png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
+
+  return 0;
+}
+
+void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height) {
   int red;
   int green;
   int blue;
+  int interval = 1;
+  struct winsize w;
   
   int ansi_code = 16;
 
-  for (png_uint_32 row = 0; row < height; row++) {
-    for (png_uint_32 col = 0; col < (width * 4); col += 4) {
+  /* Get screen row/col */
+  ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+
+  if ( ((width*2) > w.ws_col) && ((width*2) - w.ws_col) < (height - w.ws_row)) {
+    interval =  (width*2) / w.ws_col;
+  } else if (height > w.ws_row) {
+    interval = height / w.ws_row;
+  }
+
+  printf ("lines %d height: %d\n", w.ws_row, height);
+  printf ("columns %d width: %d\n", w.ws_col, width);
+
+  printf ("interavl %d\n", interval);
+
+
+  for (png_uint_32 row = 0; row < height; row += interval) {
+    /*break;*/
+    for (png_uint_32 col = 0; col < (width * 4); col += (interval * 4)) {
       ansi_code = 16;
 
-      red = (int)floor(row_pointers[row][col+0] / 42.50);
-      green = (int)floor(row_pointers[row][col+1] / 42.50);
-      blue = (int)floor(row_pointers[row][col+2] / 42.50);
+      red = (int) floor(row_pointers[row][col+0] / 42.50);
+      green = (int) floor(row_pointers[row][col+1] / 42.50);
+      blue = (int) floor(row_pointers[row][col+2] / 42.50);
 
       if (red == 6)
         red = 5;
@@ -132,23 +161,9 @@ int main(int argc, char **argv) {
 
       printf("\x1B[48;5;%dm  ", ansi_code);
     }
-    printf("\n");
+    printf("\x1B[0m\n");
   }
-  printf("\x1B[0m");
 
-
-  /* Get screen row/col */
-  ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
-
-  printf ("lines %d\n", w.ws_row);
-  printf ("columns %d\n", w.ws_col);
-
-
-  /* clean up */
-  png_read_end(png_ptr, end_info);
-  png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
-
-  return 0;
 }
 
 int prechecks(char *file_name, FILE **fp) {
