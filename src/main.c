@@ -11,11 +11,12 @@
 
 int prechecks(char *file_name, FILE **fp);
 int check_if_png(char *file_name, FILE **fp);
-void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height);
+void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height, int truecolor);
 
 int main(int argc, char **argv) {
   char *image_path = NULL;
   int c;
+  int truecolor = 0;
   int rowbytes;
   FILE *fp;
   png_structp png_ptr;
@@ -25,10 +26,13 @@ int main(int argc, char **argv) {
   png_uint_32 height;
   /*int bit_depth;*/
 
-  while ((c = getopt(argc, argv, "i:v")) != -1) {
+  while ((c = getopt(argc, argv, "i:vt")) != -1) {
     switch (c) {
     case 'i':
       image_path = optarg;
+      break;
+    case 't':
+      truecolor = 1;
       break;
     case 'v':
       printf("0.0.1\n");
@@ -105,7 +109,7 @@ int main(int argc, char **argv) {
 
   png_read_image(png_ptr, row_pointers);
 
-  print_image(row_pointers, width, height);
+  print_image(row_pointers, width, height, truecolor);
 
 
   /* clean up */
@@ -115,7 +119,7 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height) {
+void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height, int truecolor) {
   int red;
   int green;
   int blue;
@@ -133,33 +137,40 @@ void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height)
     interval = height / w.ws_row;
   }
 
-  printf ("lines %d height: %d\n", w.ws_row, height);
-  printf ("columns %d width: %d\n", w.ws_col, width);
-
-  printf ("interavl %d\n", interval);
+  /*printf ("lines %d height: %d\n", w.ws_row, height);*/
+  /*printf ("columns %d width: %d\n", w.ws_col, width);*/
+  /*printf ("interavl %d\n", interval);*/
 
 
   for (png_uint_32 row = 0; row < height; row += interval) {
     /*break;*/
     for (png_uint_32 col = 0; col < (width * 4); col += (interval * 4)) {
-      ansi_code = 16;
 
-      red = (int) floor(row_pointers[row][col+0] / 42.50);
-      green = (int) floor(row_pointers[row][col+1] / 42.50);
-      blue = (int) floor(row_pointers[row][col+2] / 42.50);
+      red = row_pointers[row][col+0];
+      green = row_pointers[row][col+1];
+      blue = row_pointers[row][col+2];
 
-      if (red == 6)
-        red = 5;
-      if (green == 6)
-        green = 5;
-      if (blue == 6)
-        blue = 5;
+      if (truecolor) {
+        printf("\x1B[48;2;%d;%d;%dm  ", red, green, blue);
+      } else {
+        ansi_code = 16;
+        red = (int) floor(red / 42.50);
+        green = (int) floor(green / 42.50);
+        blue = (int) floor(blue / 42.50);
 
-      ansi_code += blue;
-      ansi_code += (red * 36);
-      ansi_code += (green * 6);
+        if (red == 6)
+          red = 5;
+        if (green == 6)
+          green = 5;
+        if (blue == 6)
+          blue = 5;
 
-      printf("\x1B[48;5;%dm  ", ansi_code);
+        ansi_code += blue;
+        ansi_code += (red * 36);
+        ansi_code += (green * 6);
+
+        printf("\x1B[48;5;%dm  ", ansi_code);
+      }
     }
     printf("\x1B[0m\n");
   }

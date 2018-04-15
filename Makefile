@@ -5,11 +5,7 @@ BIN=/usr/bin/
 OBJS=
 
 all: ./src/main.c ${OBJS}
-	${CC} ./src/main.c ${OBJS} ${FLAGS} ${LIBS} -o ./bin/main
-
-#./obj/util.o: ./src/util.c
-#	${CC} -c ./src/util.c ${FLAGS} -o ./obj/util.o
+	${CC} ./src/main.c ${OBJS} ${FLAGS} ${LIBS} -o ./bin/ifyt
 
 clean:
-	rm ./obj/*.o
 	rm ./bin/*
