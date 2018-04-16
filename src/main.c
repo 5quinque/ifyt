@@ -31,26 +31,25 @@ int main(int argc, char **argv) {
   png_bytep *row_pointers;
   int bit_depth;
 
-  while ((c = getopt(argc, argv, "i:vt")) != -1) {
+  while ((c = getopt(argc, argv, "vt")) != -1) {
     switch (c) {
-    case 'i':
-      image_path = optarg;
-      break;
     case 't':
       truecolor = 1;
       break;
     case 'v':
-      printf("0.0.1\n");
-      return 0;
+      printf("version 0.0.1\n");
+      break;
     case '?':
-      printf("Usage: %s [-i image path] [-v]\n", argv[0]);
+      printf("Usage: %s [image path] [-v] [-t]\n", argv[0]);
       return 1;
     default:
       break;
     }
   }
+  for (int index = optind; index < argc; index++)
+    image_path = argv[index];
   if (image_path == NULL) {
-    printf("Usage: %s [-i image path] [-v]\n", argv[0]);
+    printf("Usage: %s [image path] [-v] [-t]\n", argv[0]);
     return 1;
   }
 
@@ -119,11 +118,11 @@ int main(int argc, char **argv) {
 
   print_image(row_pointers, width, height, color_type, truecolor);
 
-  printf("Bit depth: %d\n", bit_depth);
+  /*printf("Bit depth: %d\n", bit_depth);*/
   // Normal (?) stuff has colour type '6'
   // rms.png has color type '2'
   // https://www.w3.org/TR/PNG-Chunks.html
-  printf("Colour type: %d\n", color_type);
+  /*printf("Colour type: %d\n", color_type);*/
 
   /* clean up */
   png_read_end(png_ptr, end_info);
@@ -169,7 +168,7 @@ void print_image(png_bytep *row_pointers, png_uint_32 width,
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
   if ( ((width*2) > w.ws_col) && ((width*2) - w.ws_col) < (height - w.ws_row)) {
-    interval =  (width*2) / w.ws_col;
+    interval = ((width*2) / w.ws_col) + 1;
   } else if (height > w.ws_row) {
     interval = height / w.ws_row;
   }
@@ -203,6 +202,9 @@ void print_image(png_bytep *row_pointers, png_uint_32 width,
     }
     printf("\n");
   }
+
+  printf("Image Width: %d, Screen Cols: %d, Interval: %d\n",
+      width, w.ws_col, interval);
 }
 
 int get_ansi_color_code(int red, int green, int blue) {

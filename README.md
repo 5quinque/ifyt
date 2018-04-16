@@ -12,7 +12,7 @@ make
 ### Running
 
 ```bash
-./bin/ifyt [-i image path] [-t]
+./bin/ifyt [image path] [-t] [-v]
 ```
 
 ### Cleaning
