@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <string.h>
 #include <math.h>
 #include <getopt.h>
 #include <sys/ioctl.h>
@@ -11,20 +12,24 @@
 
 int prechecks(char *file_name, FILE **fp);
 int check_if_png(char *file_name, FILE **fp);
-void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height, int truecolor);
+void print_image(png_bytep *row_pointers, png_uint_32 width,
+    png_uint_32 height, int color_type, int truecolor);
+void set_output_str(char *output_str, int alpha);
+int get_ansi_color_code(int red, int green, int blue);
 
 int main(int argc, char **argv) {
   char *image_path = NULL;
   int c;
-  int truecolor = 0;
   int rowbytes;
+  volatile int truecolor = 0;
   FILE *fp;
   png_structp png_ptr;
   png_infop info_ptr;
   png_infop end_info;
   png_uint_32 width;
   png_uint_32 height;
-  /*int bit_depth;*/
+  png_bytep *row_pointers;
+  int bit_depth;
 
   while ((c = getopt(argc, argv, "i:vt")) != -1) {
     switch (c) {
@@ -98,9 +103,11 @@ int main(int argc, char **argv) {
 
   width = png_get_image_width(png_ptr, info_ptr);
   height = png_get_image_height(png_ptr, info_ptr);
-  /*bit_depth = png_get_bit_depth(png_ptr, info_ptr);*/
+  bit_depth = png_get_bit_depth(png_ptr, info_ptr);
+  int color_type = png_get_color_type(png_ptr, info_ptr);
   
-  png_bytep row_pointers[height];
+  row_pointers = malloc(height * sizeof(png_bytep));
+
   rowbytes = png_get_rowbytes(png_ptr, info_ptr);
 
   for (png_uint_32 row = 0; row < height; row++) {
@@ -109,8 +116,14 @@ int main(int argc, char **argv) {
 
   png_read_image(png_ptr, row_pointers);
 
-  print_image(row_pointers, width, height, truecolor);
 
+  print_image(row_pointers, width, height, color_type, truecolor);
+
+  printf("Bit depth: %d\n", bit_depth);
+  // Normal (?) stuff has colour type '6'
+  // rms.png has color type '2'
+  // https://www.w3.org/TR/PNG-Chunks.html
+  printf("Colour type: %d\n", color_type);
 
   /* clean up */
   png_read_end(png_ptr, end_info);
@@ -119,14 +132,38 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height, int truecolor) {
+/*int read_image() {*/
+  /*png_read_info(png_ptr, info_ptr);*/
+
+  /*width = png_get_image_width(png_ptr, info_ptr);*/
+  /*height = png_get_image_height(png_ptr, info_ptr);*/
+  
+  /*row_pointers = malloc(height * sizeof(png_bytep));*/
+
+  /*rowbytes = png_get_rowbytes(png_ptr, info_ptr);*/
+
+  /*for (png_uint_32 row = 0; row < height; row++) {*/
+    /*row_pointers[row] = png_malloc(png_ptr, rowbytes);*/
+  /*}*/
+
+  /*png_read_image(png_ptr, row_pointers);*/
+/*}*/
+
+void print_image(png_bytep *row_pointers, png_uint_32 width,
+    png_uint_32 height, int color_type, int truecolor) {
   int red;
   int green;
   int blue;
+  int alpha;
+  char output_str[7];
   int interval = 1;
-  struct winsize w;
-  
-  int ansi_code = 16;
+  int background = 0;
+  struct winsize w; 
+  int ansi_code;
+
+  if (color_type == 2) {
+    printf("No alpha channel\n");
+  }
 
   /* Get screen row/col */
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
@@ -137,44 +174,74 @@ void print_image(png_bytep *row_pointers, png_uint_32 width, png_uint_32 height,
     interval = height / w.ws_row;
   }
 
-  /*printf ("lines %d height: %d\n", w.ws_row, height);*/
-  /*printf ("columns %d width: %d\n", w.ws_col, width);*/
-  /*printf ("interavl %d\n", interval);*/
-
-
   for (png_uint_32 row = 0; row < height; row += interval) {
-    /*break;*/
     for (png_uint_32 col = 0; col < (width * 4); col += (interval * 4)) {
-
+      background = 0;
       red = row_pointers[row][col+0];
       green = row_pointers[row][col+1];
       blue = row_pointers[row][col+2];
+      alpha = row_pointers[row][col+3];
+
+      set_output_str(output_str, alpha);
+      background = alpha > 200;
 
       if (truecolor) {
-        printf("\x1B[48;2;%d;%d;%dm  ", red, green, blue);
+        if (background) {
+          printf("\x1B[48;2;%d;%d;%dm",
+              red, green, blue);
+        }
+        printf("\x1B[38;2;%d;%d;%dm%s\x1B[0m",
+            red, green, blue, output_str);
       } else {
-        ansi_code = 16;
-        red = (int) floor(red / 42.50);
-        green = (int) floor(green / 42.50);
-        blue = (int) floor(blue / 42.50);
+        ansi_code = get_ansi_color_code(red, green, blue);
 
-        if (red == 6)
-          red = 5;
-        if (green == 6)
-          green = 5;
-        if (blue == 6)
-          blue = 5;
-
-        ansi_code += blue;
-        ansi_code += (red * 36);
-        ansi_code += (green * 6);
-
-        printf("\x1B[48;5;%dm  ", ansi_code);
+        if (background) {
+          printf("\x1B[48;5;%dm", ansi_code);
+        }
+        printf("\x1B[38;5;%dm%s\x1B[0m", ansi_code, output_str);
       }
     }
-    printf("\x1B[0m\n");
+    printf("\n");
   }
+}
 
+int get_ansi_color_code(int red, int green, int blue) {
+  int ansi_code = 16;
+
+  red = (int) floor(red / 42.50);
+  green = (int) floor(green / 42.50);
+  blue = (int) floor(blue / 42.50);
+
+  if (red == 6)
+    red = 5;
+  if (green == 6)
+    green = 5;
+  if (blue == 6)
+    blue = 5;
+
+  ansi_code += blue;
+  ansi_code += (red * 36);
+  ansi_code += (green * 6);
+
+  return ansi_code;
+}
+
+/*
+ * Using the alpha value, determine which block character
+ * will we use for a particular pixel
+ */
+void set_output_str(char *output_str, int alpha) {
+  if (alpha < 50) {
+    strcpy(output_str, "  ");
+  } else if (alpha < 100) {
+    strcpy(output_str, "\u2591\u2591");
+  } else if (alpha < 150) {
+    strcpy(output_str, "\u2592\u2592");
+  } else if (alpha < 200) {
+    strcpy(output_str, "\u2593\u2593");
+  } else {
+    strcpy(output_str, "\u2588\u2588");
+  }
 }
 
 int prechecks(char *file_name, FILE **fp) {

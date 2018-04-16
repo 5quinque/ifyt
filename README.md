@@ -29,6 +29,7 @@ make install
 
 ### Todos
 
+ - Add jpeg support
  - Clean everything up
  - etc.
 
