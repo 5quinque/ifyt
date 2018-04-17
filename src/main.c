@@ -11,11 +11,15 @@
 #define PNG_BYTES_TO_CHECK 8
 
 int prechecks(char *file_name, FILE **fp);
-int check_if_png(char *file_name, FILE **fp);
+int check_if_png(FILE **fp);
 void print_image(png_bytep *row_pointers, png_uint_32 width,
     png_uint_32 height, int color_type, int truecolor);
+void print_truecolor_char(int red, int green, int blue,
+    int background, char *output_str);
+void print_ansi_char(int ansi_code, int background, char *output_str);
 void set_output_str(char *output_str, int alpha);
 int get_ansi_color_code(int red, int green, int blue);
+int get_screen_interval(png_uint_32 width, png_uint_32 height);
 
 int main(int argc, char **argv) {
   char *image_path = NULL;
@@ -29,7 +33,8 @@ int main(int argc, char **argv) {
   png_uint_32 width;
   png_uint_32 height;
   png_bytep *row_pointers;
-  int bit_depth;
+  int color_type;
+  /*int bit_depth;*/
 
   while ((c = getopt(argc, argv, "vt")) != -1) {
     switch (c) {
@@ -102,15 +107,23 @@ int main(int argc, char **argv) {
 
   width = png_get_image_width(png_ptr, info_ptr);
   height = png_get_image_height(png_ptr, info_ptr);
-  bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-  int color_type = png_get_color_type(png_ptr, info_ptr);
+  /*bit_depth = png_get_bit_depth(png_ptr, info_ptr);*/
+  color_type = png_get_color_type(png_ptr, info_ptr);
   
   row_pointers = malloc(height * sizeof(png_bytep));
+  if (row_pointers == NULL) {
+    printf("Error allocating memory for `row_pointers`\n");
+    return 1;
+  }
 
   rowbytes = png_get_rowbytes(png_ptr, info_ptr);
 
   for (png_uint_32 row = 0; row < height; row++) {
     row_pointers[row] = png_malloc(png_ptr, rowbytes);
+    if (row_pointers[row] == NULL) {
+      printf("Error allocating memory for `row_pointers[%d]`\n", row);
+      return 1;
+    }
   }
 
   png_read_image(png_ptr, row_pointers);
@@ -128,10 +141,17 @@ int main(int argc, char **argv) {
   png_read_end(png_ptr, end_info);
   png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
 
+  for (png_uint_32 row = 0; row < height; row++) {
+    free(row_pointers[row]);
+  }
+
+  free(row_pointers);
+  fclose(fp);
+
   return 0;
 }
 
-/*int read_image() {*/
+/*int read_image(png_structp png_ptr; png_infop info_ptr, png_bytep *row_pointers) {*/
   /*png_read_info(png_ptr, info_ptr);*/
 
   /*width = png_get_image_width(png_ptr, info_ptr);*/
@@ -150,19 +170,46 @@ int main(int argc, char **argv) {
 
 void print_image(png_bytep *row_pointers, png_uint_32 width,
     png_uint_32 height, int color_type, int truecolor) {
-  int red;
-  int green;
-  int blue;
-  int alpha;
-  char output_str[7];
-  int interval = 1;
+  int red, green, blue, alpha;
   int background = 0;
-  struct winsize w; 
   int ansi_code;
+  int interval = get_screen_interval(width, height);
+  char output_str[7];
+  int value_length = 4;
 
   if (color_type == 2) {
-    printf("No alpha channel\n");
+    value_length = 3;
   }
+
+  for (png_uint_32 row = 0; row < height; row += interval) {
+    for (png_uint_32 col = 0; col < (width * value_length);
+        col += (interval * value_length)) {
+      red = row_pointers[row][col+0];
+      green = row_pointers[row][col+1];
+      blue = row_pointers[row][col+2];
+      alpha = row_pointers[row][col+3];
+
+      if (color_type == 2) {
+        alpha = 255;
+      }
+
+      set_output_str(output_str, alpha);
+      background = alpha > 200;
+
+      if (truecolor) {
+        print_truecolor_char(red, green, blue, background, output_str);
+      } else {
+        ansi_code = get_ansi_color_code(red, green, blue);
+        print_ansi_char(ansi_code, background, output_str);
+      }
+    }
+    printf("\n");
+  }
+}
+
+int get_screen_interval(png_uint_32 width, png_uint_32 height) {
+  int interval = 1;
+  struct winsize w; 
 
   /* Get screen row/col */
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
@@ -170,41 +217,25 @@ void print_image(png_bytep *row_pointers, png_uint_32 width,
   if ( ((width*2) > w.ws_col) && ((width*2) - w.ws_col) < (height - w.ws_row)) {
     interval = ((width*2) / w.ws_col) + 1;
   } else if (height > w.ws_row) {
-    interval = height / w.ws_row;
+    interval = (height / w.ws_row) + 1;
   }
 
-  for (png_uint_32 row = 0; row < height; row += interval) {
-    for (png_uint_32 col = 0; col < (width * 4); col += (interval * 4)) {
-      background = 0;
-      red = row_pointers[row][col+0];
-      green = row_pointers[row][col+1];
-      blue = row_pointers[row][col+2];
-      alpha = row_pointers[row][col+3];
+  return interval;
+}
 
-      set_output_str(output_str, alpha);
-      background = alpha > 200;
+void print_truecolor_char(int red, int green, int blue,
+  int background, char *output_str) {
 
-      if (truecolor) {
-        if (background) {
-          printf("\x1B[48;2;%d;%d;%dm",
-              red, green, blue);
-        }
-        printf("\x1B[38;2;%d;%d;%dm%s\x1B[0m",
-            red, green, blue, output_str);
-      } else {
-        ansi_code = get_ansi_color_code(red, green, blue);
+  if (background)
+    printf("\x1B[48;2;%d;%d;%dm", red, green, blue);
+  printf("\x1B[38;2;%d;%d;%dm%s\x1B[0m", red, green, blue, output_str);
+}
 
-        if (background) {
-          printf("\x1B[48;5;%dm", ansi_code);
-        }
-        printf("\x1B[38;5;%dm%s\x1B[0m", ansi_code, output_str);
-      }
-    }
-    printf("\n");
+void print_ansi_char(int ansi_code, int background, char *output_str) {
+  if (background) {
+    printf("\x1B[48;5;%dm", ansi_code);
   }
-
-  printf("Image Width: %d, Screen Cols: %d, Interval: %d\n",
-      width, w.ws_col, interval);
+  printf("\x1B[38;5;%dm%s\x1B[0m", ansi_code, output_str);
 }
 
 int get_ansi_color_code(int red, int green, int blue) {
@@ -256,7 +287,7 @@ int prechecks(char *file_name, FILE **fp) {
   }
 
   /* Is the file a PNG? */
-  is_png = check_if_png(file_name, &*fp);
+  is_png = check_if_png(&*fp);
   if (!is_png) {
     printf("Error file: %s, is not a PNG file\n", file_name);
     return 0;
@@ -266,12 +297,11 @@ int prechecks(char *file_name, FILE **fp) {
 }
 
 /* Most of this function is from libpng-1.5.13/example.c */
-int check_if_png(char *file_name, FILE **fp){
+int check_if_png(FILE **fp){
   unsigned char header[PNG_BYTES_TO_CHECK];
 
-  if((*fp = fopen(file_name, "rb")) == NULL) {
+  if (*fp == NULL)
     return 0;
-  }
 
   /* Read in some of the signature bytes */
   if(fread(header, 1, PNG_BYTES_TO_CHECK, *fp) != PNG_BYTES_TO_CHECK)
