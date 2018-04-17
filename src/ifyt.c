@@ -6,55 +6,49 @@
 #include <getopt.h>
 #include <sys/ioctl.h>
 #include <png.h>
+#include "ifyt.h"
 
 #define _POSIX_SOURCE 1
 #define PNG_BYTES_TO_CHECK 8
-
-int prechecks(char *file_name, FILE **fp);
-int check_if_png(FILE **fp);
-void print_image(png_bytep *row_pointers, png_uint_32 width,
-    png_uint_32 height, int color_type, int truecolor);
-void print_truecolor_char(int red, int green, int blue,
-    int background, char *output_str);
-void print_ansi_char(int ansi_code, int background, char *output_str);
-void set_output_str(char *output_str, int alpha);
-int get_ansi_color_code(int red, int green, int blue);
-int get_screen_interval(png_uint_32 width, png_uint_32 height);
+#define USAGE "Usage: ifyt [image path] [-v] [-t] [-h]"
 
 int main(int argc, char **argv) {
   char *image_path = NULL;
-  int c;
-  int rowbytes;
   volatile int truecolor = 0;
+  int c;
   FILE *fp;
   png_structp png_ptr;
   png_infop info_ptr;
   png_infop end_info;
   png_uint_32 width;
   png_uint_32 height;
-  png_bytep *row_pointers;
+  png_bytep *row_pointers = NULL;
   int color_type;
-  /*int bit_depth;*/
 
-  while ((c = getopt(argc, argv, "vt")) != -1) {
+  while ((c = getopt(argc, argv, "vth")) != -1) {
     switch (c) {
     case 't':
       truecolor = 1;
       break;
     case 'v':
       printf("version 0.0.1\n");
+      return 0;
       break;
+    case 'h':
+      printf("%s\n", USAGE);
+      return 0;
     case '?':
-      printf("Usage: %s [image path] [-v] [-t]\n", argv[0]);
+      printf("%s\n", USAGE);
       return 1;
     default:
       break;
     }
   }
-  for (int index = optind; index < argc; index++)
+  for (int index = optind; index < argc; index++) {
     image_path = argv[index];
-  if (image_path == NULL) {
-    printf("Usage: %s [image path] [-v] [-t]\n", argv[0]);
+  }
+  if (!image_path) {
+    printf("%s\n", USAGE);
     return 1;
   }
 
@@ -95,47 +89,15 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-
   /* let libpng know that there are
    * some bytes missing from the start of the file.
    */
   png_set_sig_bytes(png_ptr, PNG_BYTES_TO_CHECK);
   png_init_io(png_ptr, fp);
 
-
-  png_read_info(png_ptr, info_ptr);
-
-  width = png_get_image_width(png_ptr, info_ptr);
-  height = png_get_image_height(png_ptr, info_ptr);
-  /*bit_depth = png_get_bit_depth(png_ptr, info_ptr);*/
-  color_type = png_get_color_type(png_ptr, info_ptr);
+  get_image_and_info(png_ptr, info_ptr, &row_pointers, &width, &height, &color_type);
   
-  row_pointers = malloc(height * sizeof(png_bytep));
-  if (row_pointers == NULL) {
-    printf("Error allocating memory for `row_pointers`\n");
-    return 1;
-  }
-
-  rowbytes = png_get_rowbytes(png_ptr, info_ptr);
-
-  for (png_uint_32 row = 0; row < height; row++) {
-    row_pointers[row] = png_malloc(png_ptr, rowbytes);
-    if (row_pointers[row] == NULL) {
-      printf("Error allocating memory for `row_pointers[%d]`\n", row);
-      return 1;
-    }
-  }
-
-  png_read_image(png_ptr, row_pointers);
-
-
   print_image(row_pointers, width, height, color_type, truecolor);
-
-  /*printf("Bit depth: %d\n", bit_depth);*/
-  // Normal (?) stuff has colour type '6'
-  // rms.png has color type '2'
-  // https://www.w3.org/TR/PNG-Chunks.html
-  /*printf("Colour type: %d\n", color_type);*/
 
   /* clean up */
   png_read_end(png_ptr, end_info);
@@ -151,22 +113,36 @@ int main(int argc, char **argv) {
   return 0;
 }
 
-/*int read_image(png_structp png_ptr; png_infop info_ptr, png_bytep *row_pointers) {*/
-  /*png_read_info(png_ptr, info_ptr);*/
+int get_image_and_info(png_structp png_ptr, png_infop info_ptr,
+    png_bytep **row_pointers, png_uint_32 *width, png_uint_32 *height, int *color_type) {
+  int rowbytes;
 
-  /*width = png_get_image_width(png_ptr, info_ptr);*/
-  /*height = png_get_image_height(png_ptr, info_ptr);*/
+  png_read_info(png_ptr, info_ptr);
+
+  *width = png_get_image_width(png_ptr, info_ptr);
+  *height = png_get_image_height(png_ptr, info_ptr);
+  *color_type = png_get_color_type(png_ptr, info_ptr);
   
-  /*row_pointers = malloc(height * sizeof(png_bytep));*/
+  *row_pointers = malloc(*height * sizeof(png_bytep));
+  if (!*row_pointers) {
+    printf("Error allocating memory for `row_pointers`\n");
+    return 0;
+  }
 
-  /*rowbytes = png_get_rowbytes(png_ptr, info_ptr);*/
+  rowbytes = png_get_rowbytes(png_ptr, info_ptr);
 
-  /*for (png_uint_32 row = 0; row < height; row++) {*/
-    /*row_pointers[row] = png_malloc(png_ptr, rowbytes);*/
-  /*}*/
+  for (png_uint_32 row = 0; row < *height; row++) {
+    (*row_pointers)[row] = png_malloc(png_ptr, rowbytes);
+    if (!(*row_pointers)[row]) {
+      printf("Error allocating memory for `row_pointers[%d]`\n", row);
+      return 0;
+    }
+  }
 
-  /*png_read_image(png_ptr, row_pointers);*/
-/*}*/
+  png_read_image(png_ptr, *row_pointers);
+
+  return 1;
+}
 
 void print_image(png_bytep *row_pointers, png_uint_32 width,
     png_uint_32 height, int color_type, int truecolor) {
@@ -226,8 +202,9 @@ int get_screen_interval(png_uint_32 width, png_uint_32 height) {
 void print_truecolor_char(int red, int green, int blue,
   int background, char *output_str) {
 
-  if (background)
+  if (background) {
     printf("\x1B[48;2;%d;%d;%dm", red, green, blue);
+  }
   printf("\x1B[38;2;%d;%d;%dm%s\x1B[0m", red, green, blue, output_str);
 }
 
@@ -281,7 +258,7 @@ int prechecks(char *file_name, FILE **fp) {
   int is_png;
 
   /* Can we open the file */
-  if (!fp) {
+  if (!*fp) {
     printf("Error opening file: %s\n", file_name);
     return 0;
   }
@@ -300,7 +277,7 @@ int prechecks(char *file_name, FILE **fp) {
 int check_if_png(FILE **fp){
   unsigned char header[PNG_BYTES_TO_CHECK];
 
-  if (*fp == NULL)
+  if (!*fp)
     return 0;
 
   /* Read in some of the signature bytes */

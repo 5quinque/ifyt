@@ -12,19 +12,37 @@ make
 ### Running
 
 ```bash
-./bin/ifyt [image path] [-t] [-v]
+ifyt [image path] [-t] [-v] [-h]
+```
+
+Example:
+
+```bash
+$ ifyt ./images/monkey.png -t
+...
+$
+```
+
+ - `-t` enable truecolor
+ - `-v` output version
+ - `-h` display usage
+
+### Installing
+
+```bash
+make install
+```
+
+### Uninstalling
+
+```bash
+make uninstall
 ```
 
 ### Cleaning
 
 ```bash
 make clean
-```
-
-### Installing
-
-```bash
-make install
 ```
 
 ### Todos

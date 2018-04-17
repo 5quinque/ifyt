@@ -4,8 +4,14 @@ LIBS=-lpng -lm
 BIN=/usr/bin/
 OBJS=
 
-all: ./src/main.c ${OBJS}
-	${CC} ./src/main.c ${OBJS} ${FLAGS} ${LIBS} -o ./bin/ifyt
+all: ./src/ifyt.c ${OBJS}
+	${CC} ./src/ifyt.c ${OBJS} ${FLAGS} ${LIBS} -o ./bin/ifyt
+
+install:
+	cp ./bin/ifyt /usr/local/bin/ifyt
+
+uninstall:
+	rm -f /usr/local/bin/ifyt
 
 clean:
 	rm ./bin/*
