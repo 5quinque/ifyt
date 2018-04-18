@@ -10,3 +10,14 @@ int get_ansi_color_code(int red, int green, int blue);
 int get_screen_interval(png_uint_32 width, png_uint_32 height);
 int get_image_and_info(png_structp png_ptr, png_infop info_ptr,
     png_bytep **row_pointers, png_uint_32 *width, png_uint_32 *height, int *color_type);
+
+void print_image2(png_bytep *row_pointers, png_uint_32 width,
+    png_uint_32 height, int color_type, int truecolor);
+
+struct rgb {
+  int red;
+  int green;
+  int blue;
+};
+
+void test(struct rgb row1, struct rgb row2);
