@@ -10,12 +10,11 @@
 
 #define _POSIX_SOURCE 1
 #define PNG_BYTES_TO_CHECK 8
-#define USAGE "Usage: ifyt [image path] [-vtha]"
+#define USAGE "Usage: ifyt [image path] [-vth]"
 
 int main(int argc, char **argv) {
   char *image_path = NULL;
   volatile int truecolor = 0;
-  int alpha = 0;
   int c;
   FILE *fp;
   png_structp png_ptr;
@@ -28,13 +27,11 @@ int main(int argc, char **argv) {
 
   while ((c = getopt(argc, argv, "vtha")) != -1) {
     switch (c) {
-    case 'a':
-      alpha = 1;
     case 't':
       truecolor = 1;
       break;
     case 'v':
-      printf("version 0.0.1\n");
+      printf("version 0.0.2\n");
       return 0;
       break;
     case 'h':
@@ -100,7 +97,7 @@ int main(int argc, char **argv) {
 
   get_image_and_info(png_ptr, info_ptr, &row_pointers, &width, &height, &color_type);
   
-  print_image2(row_pointers, width, height, color_type, truecolor);
+  print_image(row_pointers, width, height, color_type, truecolor);
 
   /* clean up */
   png_read_end(png_ptr, end_info);
@@ -149,50 +146,11 @@ int get_image_and_info(png_structp png_ptr, png_infop info_ptr,
 
 void print_image(png_bytep *row_pointers, png_uint_32 width,
     png_uint_32 height, int color_type, int truecolor) {
-  int red, green, blue, alpha;
-  int background = 0;
-  int ansi_code;
-  int interval = get_screen_interval(width, height);
-  char output_str[7];
-  int value_length = 4;
-
-  if (color_type == 2) {
-    value_length = 3;
-  }
-
-  for (png_uint_32 row = 0; row < height; row += interval) {
-    for (png_uint_32 col = 0; col < (width * value_length);
-        col += (interval * value_length)) {
-      red = row_pointers[row][col+0];
-      green = row_pointers[row][col+1];
-      blue = row_pointers[row][col+2];
-      alpha = row_pointers[row][col+3];
-
-      if (color_type == 2) {
-        alpha = 255;
-      }
-
-      set_output_str(output_str, alpha);
-      background = alpha > 200;
-
-      if (truecolor) {
-        print_truecolor_char(red, green, blue, background, output_str);
-      } else {
-        ansi_code = get_ansi_color_code(red, green, blue);
-        print_ansi_char(ansi_code, background, output_str);
-      }
-    }
-    printf("\n");
-  }
-}
-
-void print_image2(png_bytep *row_pointers, png_uint_32 width,
-    png_uint_32 height, int color_type, int truecolor) {
   struct rgb bg;
   struct rgb fg;
   struct rgb blank;
-  int ansi_code_bg;
-  int ansi_code_fg;
+  int ansi_bg;
+  int ansi_fg;
   int interval = get_screen_interval(width, height);
   int value_length = 4;
 
@@ -216,24 +174,27 @@ void print_image2(png_bytep *row_pointers, png_uint_32 width,
       }
 
       if (truecolor) {
-        test(bg, fg, 0);
+        print_truecolor_char(bg, fg);
       } else {
-        ansi_code_bg = get_ansi_color_code(bg);
-        ansi_code_fg = get_ansi_color_code(fg);
-        test(bg, fg, 1);
+        ansi_bg = get_ansi_color_code(bg);
+        ansi_fg = get_ansi_color_code(fg);
+        print_ansi_char(ansi_bg, ansi_fg);
       }
     }
     printf("\n");
   }
 }
 
-
-void test(struct rgb bg, struct rgb fg) {
+void print_truecolor_char(struct rgb bg, struct rgb fg) {
   printf("\x1B[48;2;%d;%d;%dm", bg.red, bg.green, bg.blue);
   printf("\x1B[38;2;%d;%d;%dm\u2584\x1B[0m", fg.red, fg.green, fg.blue);
 }
 
-/* todo - make this work better */
+void print_ansi_char(int ansi_bg, int ansi_fg) {
+  printf("\x1B[48;5;%dm", ansi_bg);
+  printf("\x1B[38;5;%dm\u2584\x1B[0m", ansi_fg);
+}
+
 int get_screen_interval(png_uint_32 width, png_uint_32 height) {
   int interval = 1;
   struct winsize w; 
@@ -241,71 +202,36 @@ int get_screen_interval(png_uint_32 width, png_uint_32 height) {
   /* Get screen row/col */
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
-  if ( ((width*2) > w.ws_col) && ((width*2) - w.ws_col) < (height - w.ws_row)) {
-    interval = ((width*2) / w.ws_col) + 1;
+  if ( (width > w.ws_col) && (width - w.ws_col) < (height - w.ws_row)) {
+    interval = round(width / (double)w.ws_col);
   } else if (height > w.ws_row) {
-    interval = (height / w.ws_row) + 1;
+    interval = round(height / (double)w.ws_row);
   }
 
   return interval;
 }
 
-void print_truecolor_char(int red, int green, int blue,
-  int background, char *output_str) {
-
-  if (background) {
-    printf("\x1B[48;2;%d;%d;%dm", red, green, blue);
-  }
-  printf("\x1B[38;2;%d;%d;%dm%s\x1B[0m", red, green, blue, output_str);
-}
-
-void print_ansi_char(int ansi_code, int background, char *output_str) {
-  if (background) {
-    printf("\x1B[48;5;%dm", ansi_code);
-  }
-  printf("\x1B[38;5;%dm%s\x1B[0m", ansi_code, output_str);
-}
-
 int get_ansi_color_code(struct rgb values) {
   int ansi_code = 16;
 
-  int red = (int) floor(values.red / 42.50);
-  int green = (int) floor(values.green / 42.50);
-  int blue = (int) floor(values.blue / 42.50);
-
-  if (red == 6)
-    red = 5;
-  if (green == 6)
-    green = 5;
-  if (blue == 6)
-    blue = 5;
-
-  /* todo
-   * explain this for future generations
+  /*
+   * 42.57 comes from 255 / 5.99
+   * If you look at the 8-bit ansi color codes, we have 216 colors
+   * blue increases every 1 value
+   * green increases every 6 values
+   * red increases every 36
+   * each with a maximum of 6 values, 6 * 6 * 6 = 216
+   * https://en.wikipedia.org/wiki/ANSI_escape_code#8-bit
    */
+  int red = (int) floor(values.red / 42.57);
+  int green = (int) floor(values.green / 42.57);
+  int blue = (int) floor(values.blue / 42.57);
+
   ansi_code += blue;
   ansi_code += (red * 36);
   ansi_code += (green * 6);
 
   return ansi_code;
-}
-
-/*
- * Using the alpha value, determine which block character
- * will we use for a particular pixel
- */
-void set_output_str(char *output_str, int alpha) {
-  if (alpha < 50) {
-    strcpy(output_str, "  ");
-  } else if (alpha < 100) {
-    strcpy(output_str, "\u2591\u2591");
-  } else if (alpha < 150) {
-    strcpy(output_str, "\u2592\u2592");
-  } else if (alpha < 200) {
-    strcpy(output_str, "\u2593\u2593");
-  } else {
-    strcpy(output_str, "\u2588\u2588");
-  }
 }
 
 int prechecks(char *file_name, FILE **fp) {
