@@ -146,11 +146,11 @@ int get_image_and_info(png_structp png_ptr, png_infop info_ptr,
 
 void print_image(png_bytep *row_pointers, png_uint_32 width,
     png_uint_32 height, int color_type, int truecolor) {
-  struct rgb bg;
   struct rgb fg;
+  struct rgb bg;
   struct rgb blank;
-  int ansi_bg;
   int ansi_fg;
+  int ansi_bg;
   int interval = get_screen_interval(width, height);
   int value_length = 4;
 
@@ -158,48 +158,72 @@ void print_image(png_bytep *row_pointers, png_uint_32 width,
     value_length = 3;
   }
 
-  /* figure out alpha */
+  /* todo figure out alpha */
   for (png_uint_32 row = 0; row < height; row += (interval * 2)) {
     for (png_uint_32 col = 0; col < (width * value_length);
         col += (interval * value_length)) {
-      bg.red = row_pointers[row][col+0];
-      bg.green = row_pointers[row][col+1];
-      bg.blue = row_pointers[row][col+2];
-      bg.alpha = row_pointers[row][col+3];
+      fg.red = row_pointers[row][col+0];
+      fg.green = row_pointers[row][col+1];
+      fg.blue = row_pointers[row][col+2];
+      fg.alpha = row_pointers[row][col+3];
 
-      if (row + interval > height) {
-        fg = blank;
+      if (row + interval >= height) {
+        bg = blank;
       } else {
-        fg.red = row_pointers[row + interval][col+0];
-        fg.green = row_pointers[row + interval][col+1];
-        fg.blue = row_pointers[row + interval][col+2];
-        fg.alpha = row_pointers[row + interval][col+3];
+        bg.red = row_pointers[row + interval][col+0];
+        bg.green = row_pointers[row + interval][col+1];
+        bg.blue = row_pointers[row + interval][col+2];
+        bg.alpha = row_pointers[row + interval][col+3];
       }
 
       if (truecolor) {
-        print_truecolor_char(bg, fg);
+        print_truecolor_char(fg, bg);
       } else {
-        ansi_bg = get_ansi_color_code(bg);
         ansi_fg = get_ansi_color_code(fg);
-        print_ansi_char(ansi_bg, ansi_fg);
+        ansi_bg = get_ansi_color_code(bg);
+        print_ansi_char(ansi_fg, ansi_bg);
       }
     }
-    printf("\n");
+    printf("\x1B[0m\n");
   }
 }
 
-void print_truecolor_char(struct rgb bg, struct rgb fg) {
-  printf("\x1B[48;2;%d;%d;%dm", bg.red, bg.green, bg.blue);
-  printf("\x1B[38;2;%d;%d;%dm\u2584\x1B[0m", fg.red, fg.green, fg.blue);
+void print_truecolor_char(struct rgb fg, struct rgb bg) {
+  if (is_blank(bg)) {
+    printf("\x1B[49m");
+  } else {
+    printf("\x1B[48;2;%d;%d;%dm", bg.red, bg.green, bg.blue);
+  }
+
+  if (is_blank(fg)) {
+    printf("\x1B[39m ");
+  } else {
+    printf("\x1B[38;2;%d;%d;%dm\u2580", fg.red, fg.green, fg.blue);
+  }
+
 }
 
-void print_ansi_char(int ansi_bg, int ansi_fg) {
-  printf("\x1B[48;5;%dm", ansi_bg);
-  printf("\x1B[38;5;%dm\u2584\x1B[0m", ansi_fg);
+void print_ansi_char(int ansi_fg, int ansi_bg) {
+  if (ansi_bg == 16) {
+    printf("\x1B[49m");
+  } else {
+    printf("\x1B[48;5;%dm", ansi_bg);
+  }
+
+  if (ansi_fg == 16) {
+    printf("\x1B[39m ");
+  } else {
+    printf("\x1B[38;5;%dm\u2580", ansi_fg);
+  }
+}
+
+int is_blank(struct rgb values) {
+  return ((values.red == 0 &&
+        values.blue == 0 &&
+        values.green == 0) || values.alpha == 0);
 }
 
 int get_screen_interval(png_uint_32 width, png_uint_32 height) {
-  /* make this better thanks */
   int interval = 1;
   struct winsize w; 
 
@@ -207,18 +231,33 @@ int get_screen_interval(png_uint_32 width, png_uint_32 height) {
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
 
   /* If we redirect output to a file ws_col and ws_row == 0 */
-  if (!w.ws_col || !w.ws_row) {
-    return 1;
-  }
+  if (!w.ws_col || !w.ws_row)
+    return interval;
 
-  if ( (width > w.ws_col) && (width - w.ws_col) < (height - w.ws_row)) {
-    interval = round(width / (double)w.ws_col);
-  } else if (height > w.ws_row) {
-    interval = round(height / (double)w.ws_row);
-  }
+  printf("Image width %d, screen cols: %d\n", width, w.ws_col);
+  printf("Image height %d, screen rows: %d\n", height, (w.ws_row * 2));
 
+  if (width > w.ws_col && height > (w.ws_row * 2)) {
+    /*printf("Both too wide\n");*/
+    if (width - w.ws_col > height - (w.ws_row * 2)) {
+      interval = ceil(width / (double)w.ws_col);
+      /*printf("Interval: %d\n", interval);*/
+    } else {
+      interval = ceil(height / (double) (w.ws_row * 2));
+      /*printf("Interval: %d\n", interval);*/
+    }
+  } else if (width > w.ws_col) {
+    /*printf("Width too wide\n");*/
+    interval = ceil(width / (double)w.ws_col);
+    /*printf("Interval: %d\n", interval);*/
+  } else if (height > (w.ws_row * 2)) {
+    /*printf("Height too high\n");*/
+    interval = ceil(height / (double) (w.ws_row * 2));
+    /*printf("Interval: %d\n", interval);*/
+  }
   return interval;
 }
+
 
 int get_ansi_color_code(struct rgb values) {
   int ansi_code = 16;

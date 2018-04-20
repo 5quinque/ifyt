@@ -6,6 +6,7 @@ int get_image_and_info(png_structp png_ptr, png_infop info_ptr,
 
 void print_image(png_bytep *row_pointers, png_uint_32 width,
     png_uint_32 height, int color_type, int truecolor);
+int is_blank(struct rgb values);
 
 struct rgb {
   int red;
