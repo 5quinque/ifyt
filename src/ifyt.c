@@ -25,7 +25,7 @@ int main(int argc, char **argv) {
   png_bytep *row_pointers = NULL;
   int color_type;
 
-  while ((c = getopt(argc, argv, "vtha")) != -1) {
+  while ((c = getopt(argc, argv, "vth")) != -1) {
     switch (c) {
     case 't':
       truecolor = 1;
@@ -158,12 +158,14 @@ void print_image(png_bytep *row_pointers, png_uint_32 width,
     value_length = 3;
   }
 
+  /* figure out alpha */
   for (png_uint_32 row = 0; row < height; row += (interval * 2)) {
     for (png_uint_32 col = 0; col < (width * value_length);
         col += (interval * value_length)) {
       bg.red = row_pointers[row][col+0];
       bg.green = row_pointers[row][col+1];
       bg.blue = row_pointers[row][col+2];
+      bg.alpha = row_pointers[row][col+3];
 
       if (row + interval > height) {
         fg = blank;
@@ -171,6 +173,7 @@ void print_image(png_bytep *row_pointers, png_uint_32 width,
         fg.red = row_pointers[row + interval][col+0];
         fg.green = row_pointers[row + interval][col+1];
         fg.blue = row_pointers[row + interval][col+2];
+        fg.alpha = row_pointers[row + interval][col+3];
       }
 
       if (truecolor) {
@@ -196,11 +199,17 @@ void print_ansi_char(int ansi_bg, int ansi_fg) {
 }
 
 int get_screen_interval(png_uint_32 width, png_uint_32 height) {
+  /* make this better thanks */
   int interval = 1;
   struct winsize w; 
 
   /* Get screen row/col */
   ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+
+  /* If we redirect output to a file ws_col and ws_row == 0 */
+  if (!w.ws_col || !w.ws_row) {
+    return 1;
+  }
 
   if ( (width > w.ws_col) && (width - w.ws_col) < (height - w.ws_row)) {
     interval = round(width / (double)w.ws_col);
@@ -254,7 +263,7 @@ int prechecks(char *file_name, FILE **fp) {
 }
 
 /* Most of this function is from libpng-1.5.13/example.c */
-int check_if_png(FILE **fp){
+int check_if_png(FILE **fp) {
   unsigned char header[PNG_BYTES_TO_CHECK];
 
   if (!*fp)
