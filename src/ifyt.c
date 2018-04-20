@@ -200,7 +200,6 @@ void print_truecolor_char(struct rgb fg, struct rgb bg) {
   } else {
     printf("\x1B[38;2;%d;%d;%dm\u2580", fg.red, fg.green, fg.blue);
   }
-
 }
 
 void print_ansi_char(int ansi_fg, int ansi_bg) {
@@ -234,26 +233,16 @@ int get_screen_interval(png_uint_32 width, png_uint_32 height) {
   if (!w.ws_col || !w.ws_row)
     return interval;
 
-  printf("Image width %d, screen cols: %d\n", width, w.ws_col);
-  printf("Image height %d, screen rows: %d\n", height, (w.ws_row * 2));
-
   if (width > w.ws_col && height > (w.ws_row * 2)) {
-    /*printf("Both too wide\n");*/
     if (width - w.ws_col > height - (w.ws_row * 2)) {
       interval = ceil(width / (double)w.ws_col);
-      /*printf("Interval: %d\n", interval);*/
     } else {
       interval = ceil(height / (double) (w.ws_row * 2));
-      /*printf("Interval: %d\n", interval);*/
     }
   } else if (width > w.ws_col) {
-    /*printf("Width too wide\n");*/
     interval = ceil(width / (double)w.ws_col);
-    /*printf("Interval: %d\n", interval);*/
   } else if (height > (w.ws_row * 2)) {
-    /*printf("Height too high\n");*/
     interval = ceil(height / (double) (w.ws_row * 2));
-    /*printf("Interval: %d\n", interval);*/
   }
   return interval;
 }
