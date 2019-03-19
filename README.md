@@ -55,6 +55,18 @@ make clean
 
  - libpng
 
+#### Install on Debian
+
+```
+sudo apt install libpng-dev
+```
+
+#### Install on CentOS
+
+```
+sudo yum install libpng-devel
+```
+
 ### License
 
 UNLICENSE
